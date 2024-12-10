@@ -28,7 +28,7 @@ Dependencies:
 For installation, clone the repository and run
 
 ```zsh
-pip install.
+pip install .
 ```
 
 By default, the data is saved in `a4c-video-dir/` directory.
