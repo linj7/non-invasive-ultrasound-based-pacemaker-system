@@ -9,12 +9,11 @@ const app = express();
 const port = 8080;
 
 app.use(fileUpload());
-// 使用中间件设置超时时间，例如设置为 10 分钟
-app.use(timeout('600s')); // 600 秒 = 10 分钟
+app.use(timeout('600s')); 
 
 app.use(express.json());
 
-// 检查超时
+// check timeout
 function haltOnTimedout(req, res, next) {
     if (!req.timedout) next();
 }
@@ -28,19 +27,18 @@ app.post('/receive-video', haltOnTimedout, (req, res) => {
     let videoFile = req.files.video;
     console.log("Received video file:", videoFile.name);
 
-    // 使用时间戳作为文件名
+    // Use timestamp as the file name
     const now = new Date();
     const timestamp = `${now.getMonth() + 1}_${now.getDate()}_${now.getHours()}_${now.getMinutes()}_${now.getSeconds()}`;
     const newFileName = `${timestamp}${path.extname(videoFile.name)}`;
     console.log("New file name is :", newFileName)
     const parsedPath = path.parse(newFileName);
     const newFileNameWithAvi = `${parsedPath.name}.avi`;
-    
-    // 设置文件保存路径和其他路径
+
     const savePath = path.join(__dirname, 'a4c-video-dir', 'Videos', newFileName);
     const FileListPath = path.join(__dirname, 'a4c-video-dir', 'FileList.csv');
     const VolumeTracingsPath = path.join(__dirname, 'a4c-video-dir', 'VolumeTracings.csv');
-    const modelOutputPath = path.join('E:\\Ultrasound\\EchoNet-Dynamic\\dynamic-master-gpu\\output\\segmentation\\deeplabv3_resnet50_random\\videos\\', newFileNameWithAvi);
+    const modelOutputPath = path.join(__dirname, 'output', 'segmentation', 'deeplabv3_resnet50_random', 'videos', newFileNameWithAvi);
 
     videoFile.mv(savePath, function(err) {
         if (err) {
@@ -58,8 +56,8 @@ app.post('/receive-video', haltOnTimedout, (req, res) => {
             }
             console.log("Video preprocess successfully:", stdout);
 
-            // 调用 echonet segmentation 命令
-            const echonetCommand = `echonet segmentation --save_video --run_test --weights E:\\Ultrasound\\EchoNet-Dynamic\\dynamic-master-gpu\\output\\segmentation\\deeplabv3_resnet50_random\\best.pt`;
+            const weightsPath = path.join(__dirname, 'output', 'segmentation', 'deeplabv3_resnet50_random', 'best.pt');
+            const echonetCommand = `echonet segmentation --save_video --run_test --weights ${weightsPath}`;
             exec(echonetCommand, (echonetError, echonetStdout, echonetStderr) => {
                 if (echonetError) {
                     console.error("Error executing echonet segmentation command:", echonetStderr);
@@ -76,12 +74,12 @@ app.post('/receive-video', haltOnTimedout, (req, res) => {
                     console.log("Annotated video successfully:", positionsStdout);
 
                     try {
-                        // 解析 Python 脚本的 JSON 输出，提取 pythonCoordinates
+                        // Parse the json output of Python script, extract pythonCoordinates
                         const pythonCoordinates = JSON.parse(positionsStdout);
                         console.log("Parsed Python coordinates:", pythonCoordinates);
 
-                        // 在 getPositionsCommand 成功后，运行 echonet video 命令
-                        const echonetCommand = `echonet video --batch_size 1 --run_test --weights E:\\Ultrasound\\EchoNet-Dynamic\\dynamic-master-gpu\\output\\video\\r2plus1d_18_32_2_pretrained\\best.pt`;
+                        const videoWeightsPath = path.join(__dirname, 'output', 'video', 'r2plus1d_18_32_2_pretrained', 'best.pt');
+                        const echonetCommand = `echonet video --batch_size 1 --run_test --weights ${videoWeightsPath}`;
                         exec(echonetCommand, (echonetError, echonetStdout, echonetStderr) => {
                             if (echonetError) {
                                 console.error("Error executing echonet video command:", echonetStderr);
@@ -89,35 +87,36 @@ app.post('/receive-video', haltOnTimedout, (req, res) => {
                             }
                             console.log("Echonet video command executed successfully:", echonetStdout);
 
-                            // 读取 test_predictions.csv 文件并查找文件名匹配的行
-                            const csvFilePath = path.join('E:\\Ultrasound\\EchoNet-Dynamic\\dynamic-master-gpu\\output\\video\\r2plus1d_18_32_2_pretrained', 'test_predictions.csv');
+                            // Read the test_predictions.csv file and find the row where the file name matches.
+                            const csvFilePath = path.join(__dirname, 'output', 'video', 'r2plus1d_18_32_2_pretrained', 'test_predictions.csv');
+
                             fs.readFile(csvFilePath, 'utf8', (err, data) => {
                                 if (err) {
                                     console.error("Error reading CSV file:", err);
                                     return res.status(500).json({ error: "Failed to read CSV file", details: err.message });
                                 }
 
-                                // 按行分割 CSV 数据
+                                // segment CSV data
                                 const rows = data.split('\n').map(row => row.split(','));
                                 
-                                // 查找文件名为 newFileNameWithAvi 的行，并获取第三列的值作为 ejectionFraction
+                                // Find the row with the file name newFileNameWithAvi and retrieve the value in the third column as ejectionFraction.
                                 const targetRow = rows.find(row => row[0] === newFileNameWithAvi);
                                 if (!targetRow || targetRow.length < 3) {
                                     console.error("File name not found or data is insufficient in CSV.");
                                     return res.status(500).json({ error: "File name not found or data is insufficient in CSV" });
                                 }
 
-                                const ejectionFraction = parseFloat(targetRow[2].trim()); // 获取第三列值，并去掉空白字符
+                                const ejectionFraction = parseFloat(targetRow[2].trim()); 
                                 console.log("Extracted ejectionFraction:", ejectionFraction);
 
-                                // 将 ejectionFraction 和坐标等结果返回到客户端
+                                // return ejectionFraction and coordinates to the client
                                 const coordinates = [
                                     { x: pythonCoordinates['2'][0].toString(), y: pythonCoordinates['2'][1].toString() },
                                     { x: pythonCoordinates['3'][0].toString(), y: pythonCoordinates['3'][1].toString() },
                                     { x: pythonCoordinates['4'][0].toString(), y: pythonCoordinates['4'][1].toString() }
                                 ];
 
-                                const pacingRequired = ejectionFraction > 50;
+                                const pacingRequired = ejectionFraction < 40;
 
                                 res.json({
                                     ejectionFraction: ejectionFraction,
