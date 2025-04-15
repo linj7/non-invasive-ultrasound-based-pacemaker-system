@@ -1,5 +1,4 @@
 # Non-invasive ultrasound based pacemaker system
-------------------------------------------------------------------------------
 
 ## Models
 
