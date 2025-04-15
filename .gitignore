@@ -6,8 +6,8 @@ echonet.cfg
 *.pyc
 echonet.egg-info/
 
-a4c-video-dir/
 build/
 dist/
 output/
+scripts/
 node_modules/

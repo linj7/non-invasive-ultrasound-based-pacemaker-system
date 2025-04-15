@@ -10,7 +10,7 @@ class FileTransferIOS: NSObject, UINavigationControllerDelegate, UIImagePickerCo
     static let shared = FileTransferIOS()
     var completion: ((Result<[String: Any], Error>) -> Void)?
 
-    let serverURL = "http://172.20.5.81:8080/receive-video"
+    let serverURL = "http://xxx.xx.x.xx:8080/receive-video"
 
     func selectVideo(viewController: UIViewController, completion: @escaping (Result<[String: Any], Error>) -> Void) {
         self.completion = completion
