@@ -15,25 +15,24 @@ import tqdm
 import echonet
 from io import BytesIO
 
-"""使用了 click 库来定义一个命令行接口（CLI）,这些装饰器 @click.command 和 @click.option 用于设置命令名称及其参数，使得用户可以通过命令行方便地运行脚本并传递各种配置选项。"""
 @click.command("segmentation")
-@click.option("--data_dir", type=click.Path(exists=True, file_okay=False), default=None) # 定义了命令行接口的一个参数
+@click.option("--data_dir", type=click.Path(exists=True, file_okay=False), default=None) 
 @click.option("--output", type=click.Path(file_okay=False), default=None)
 @click.option("--model_name", type=click.Choice(
     sorted(name for name in torchvision.models.segmentation.__dict__
            if name.islower() and not name.startswith("__") and callable(torchvision.models.segmentation.__dict__[name]))),
     default="deeplabv3_resnet50")
-@click.option("--pretrained/--random", default=False) # 是否在预训练模型的基础上进行训练
-@click.option("--weights", type=click.Path(exists=True, dir_okay=False), default=None) # 路径必须存在，且必须是一个文件
-@click.option("--run_test/--skip_test", default=False) # 运行或跳过测试集的评估
-@click.option("--save_video/--skip_video", default=False) # 保存/不保存带有分割结果的视频
-@click.option("--num_epochs", type=int, default=50) # 训练的轮数
+@click.option("--pretrained/--random", default=False)
+@click.option("--weights", type=click.Path(exists=True, dir_okay=False), default=None)
+@click.option("--run_test/--skip_test", default=False) 
+@click.option("--save_video/--skip_video", default=False) 
+@click.option("--num_epochs", type=int, default=50)
 @click.option("--lr", type=float, default=1e-5) # learning rate
 @click.option("--weight_decay", type=float, default=0)
-@click.option("--lr_step_period", type=int, default=None) # 每隔多少个 epoch 衰减一次学习率
+@click.option("--lr_step_period", type=int, default=None)
 @click.option("--num_train_patients", type=int, default=None)
-@click.option("--num_workers", type=int, default=4) # 数据加载时使用的子进程数量
-@click.option("--batch_size", type=int, default=20) # 每个批次加载的样本数量
+@click.option("--num_workers", type=int, default=4)
+@click.option("--batch_size", type=int, default=20)
 @click.option("--device", type=str, default=None)
 @click.option("--seed", type=int, default=0)
 
@@ -215,18 +214,15 @@ def run(
             model.load_state_dict(checkpoint['state_dict'])
             f.write("Best validation loss {} from epoch {}\n".format(checkpoint["loss"], checkpoint["epoch"]))
 
-        # 这段代码用于在训练完成后对模型在验证集和测试集上的性能进行评估
         if run_test: 
-            # 遍历 ["val", "test"] 两个数据集
+            # traverse ["val", "test"] these two dataset
             for split in ["val", "test"]:
                 dataset = echonet.datasets.Echo(root=data_dir, split=split, **kwargs)
                 dataloader = torch.utils.data.DataLoader(dataset,
                                                          batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
                 
-                # 调用 run_epoch 函数，在当前数据集上运行一个评估周期，计算损失和交并比指标。
                 loss, large_inter, large_union, small_inter, small_union = echonet.utils.segmentation.run_epoch(model, dataloader, False, None, device)
 
-                # 计算 Dice 系数:
                 overall_dice = 2 * (large_inter + small_inter) / (large_union + large_inter + small_union + small_inter)
                 large_dice = 2 * large_inter / (large_union + large_inter)
                 small_dice = 2 * small_inter / (small_union + small_inter)
@@ -248,7 +244,7 @@ def run(
                                     )
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=10, num_workers=num_workers, shuffle=False, pin_memory=False, collate_fn=_video_collate_fn)
 
-    # 只有在用户希望保存视频 (save_video=True) 且输出目录中缺少某些视频文件时，才执行
+    # Only run when user wants to save the video， and the output directory lacks of the output video
     if save_video and not all(os.path.isfile(os.path.join(output, "videos", f)) for f in dataloader.dataset.fnames):
 
         model.eval()
@@ -263,17 +259,15 @@ def run(
                 for (x, (filenames, large_index, small_index), length) in tqdm.tqdm(dataloader):
                     # Run segmentation model on blocks of frames one-by-one
                     # The whole concatenated video may be too long to run together
-                    # 将一个视频（由多个帧组成）分批次地传递给一个深度学习分割模型进行处理，并将所有批次的输出拼接成一个完整的结果数组
                     y = np.concatenate([model(x[i:(i + batch_size), :, :, :].to(device))["out"].detach().cpu().numpy() for i in range(0, x.shape[0], batch_size)])
 
                     start = 0
                     x = x.numpy()
                     for (i, (filename, offset)) in enumerate(zip(filenames, length)):
                         # Extract one video and segmentation predictions
-                        video = x[start:(start + offset), ...] # offset是当前视频的帧数，这步是提取当前视频的所有帧
-                        logit = y[start:(start + offset), 0, :, :] # 提取了对应当前视频的所有分割预测
+                        video = x[start:(start + offset), ...]
+                        logit = y[start:(start + offset), 0, :, :] 
 
-                        # Un-normalize video，将标准化（normalized）的视频数据还原到其原始的像素值范围
                         video *= std.reshape(1, 3, 1, 1)
                         video += mean.reshape(1, 3, 1, 1)
 
@@ -291,7 +285,7 @@ def run(
                         # Add blank canvas under pair of videos
                         video = np.concatenate((video, np.zeros_like(video)), 2)
 
-                        # Compute size of segmentation per frame，统计每帧中被分割区域覆盖的像素数量。
+                        # Compute size of segmentation per frame
                         size = (logit > 0).sum((1, 2))
 
                         # Identify systole frames with peak detection
@@ -326,8 +320,8 @@ def run(
                         # Iterate the frames in this video
                         for (f, s) in enumerate(size):
 
-                            # On all frames, mark a pixel for the size of the frame，video的形状为[帧数, 通道数, 高度, 宽度]
-                            video[:, :, int(round(115 + 100 * s)), int(round(f / len(size) * 200 + 10))] = 255. # 将所有帧上的所有通道的（x,y）位置上的像素设置为255，即白色
+                            # On all frames, mark a pixel for the size of the frame
+                            video[:, :, int(round(115 + 100 * s)), int(round(f / len(size) * 200 + 10))] = 255.
 
                             if f in systole:
                                 # If frame is computer-selected systole, mark with a line

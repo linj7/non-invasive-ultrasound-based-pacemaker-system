@@ -92,7 +92,8 @@ def calculate_three_positions(input_video_path, output_video_path):
     out = cv2.VideoWriter(output_video_path, fourcc, fps, frame_size)
 
     frame_count = 0  
-    last_frame_markers = [] 
+    last_frame_markers = []
+    per_frame_shift_info = []
 
     while True:
         ret, frame = cap.read()  
@@ -150,14 +151,50 @@ def calculate_three_positions(input_video_path, output_video_path):
         last_frame_markers = markers if frame_count == total_frames - 1 else last_frame_markers
         annotated_frame = frame.copy()
 
-        for label, point in markers:
-            cv2.circle(annotated_frame, point, radius=13, color=(10, 255, 0), thickness=-1)
-            cv2.putText(annotated_frame, label, (point[0] - 8, point[1] + 7),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
-            coordinate_text = f"({point[0]}, {point[1]})"
-            cv2.putText(annotated_frame, coordinate_text, (point[0] + 15, point[1] + 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 165, 255), 2, cv2.LINE_AA)
+        marker_dict = {label: pt for label, pt in markers}
+        if len(marker_dict) >= 2:
+            avg_x = sum([pt[0] for pt in marker_dict.values()]) / len(marker_dict)
+            avg_y = sum([pt[1] for pt in marker_dict.values()]) / len(marker_dict)
+            center_x = frame_width / 2
+            center_y = frame_height / 2
+            
+            shift_x = (avg_x - center_x) / frame_width
+            shift_y = (avg_y - center_y) / frame_height
+            threshold_ratio = 0.1  # 10%
 
+            shift_decision = "Centered"
+            if abs(shift_x) > threshold_ratio or abs(shift_y) > threshold_ratio:
+                if shift_y < -threshold_ratio:
+                    vert = "Up"
+                elif shift_y > threshold_ratio:
+                    vert = "Down"
+                else:
+                    vert = ""
+
+                if shift_x > threshold_ratio:
+                    horiz = "Right"
+                elif shift_x < -threshold_ratio:
+                    horiz = "Left"
+                else:
+                    horiz = ""
+
+                direction = " ".join(filter(None, [horiz, vert]))
+                shift_decision = f"{direction} shifted"
+        else:
+            shift_decision = "Unknown"
+
+        per_frame_shift_info.append(shift_decision)
+
+        for label, point in markers:
+            cv2.circle(annotated_frame, point, radius=4, color=(10, 255, 0), thickness=-1)
+            cv2.putText(annotated_frame, label, (point[0] - 3, point[1] + 3),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.2, (255, 255, 255), 1, cv2.LINE_AA)
+            coordinate_text = f"({point[0]}, {point[1]})"
+            cv2.putText(annotated_frame, coordinate_text, (point[0] + 5, point[1] + 3),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 0), 1, cv2.LINE_AA)
+
+        cv2.putText(annotated_frame, f"{shift_decision}",
+                    (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 0), 1, cv2.LINE_AA)
         out.write(annotated_frame)
 
         frame_count += 1
@@ -171,7 +208,8 @@ def calculate_three_positions(input_video_path, output_video_path):
     return {label: point for label, point in last_frame_markers}
 
 def main():
-    input_video_path = sys.argv[1]
+    # input_video_path = sys.argv[1]
+    input_video_path = "test.avi"
     cropped_video_path = os.path.splitext(input_video_path)[0] + "_cropped" + os.path.splitext(input_video_path)[1]
     annotated_video_path = os.path.splitext(input_video_path)[0] + "_annotated" + os.path.splitext(input_video_path)[1]
 
